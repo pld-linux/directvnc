@@ -1,13 +1,14 @@
 Summary:	DirectVNC - VNC client for DirectFB
 Summary(pl):	DirectVNC - klient VNC dla DirectFB
 Name:		directvnc
-Version:	0.7
+Version:	0.7.5
 Release:	1
 License:	GPL
 Group:		Applications/Networking
 Source0:	http://freesoftware.fsf.org/download/directvnc/%{name}-%{version}.tar.gz
 URL:		http://www.adam-lilienthal.de/directvnc/
-BuildRequires:	DirectFB-devel >= 0.9.12
+BuildRequires:	DirectFB-devel >= 0.9.16
+BuildRequires:	XFree86-devel
 BuildRequires:	libjpeg-devel
 BuildRequires:	pkgconfig
 BuildRequires:	zlib-devel
@@ -45,7 +46,7 @@ akceleracji na niektórych kartach graficznych.
 %setup -q
 
 %build
-%configure2_13
+%configure
 
 %{__make}
 
