@@ -6,6 +6,7 @@ Release:	1
 License:	GPL
 Group:		Applications/Networking
 Source0:	http://freesoftware.fsf.org/download/directvnc/%{name}-%{version}.tar.gz
+# Source0-md5:	1fba84dc5450751bb402b68a9b9fb429
 URL:		http://www.adam-lilienthal.de/directvnc/
 BuildRequires:	DirectFB-devel >= 0.9.16
 BuildRequires:	XFree86-devel
