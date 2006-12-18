@@ -1,0 +1,11 @@
+--- directvnc-0.7.5/src/dfb.c.old	2006-12-17 09:24:53.000000000 +0100
++++ directvnc-0.7.5/src/dfb.c	2006-12-17 09:26:43.000000000 +0100
+@@ -30,7 +30,7 @@
+ IDirectFBEventBuffer    *input_buffer;
+ DFBResult err;
+ DFBSurfaceDescription dsc;
+-DFBCardCapabilities caps;
++DFBGraphicsDeviceDescription caps;
+ DFBDisplayLayerConfig layer_config;
+ DFBRegion rect;
+ DFBRectangle scratch_rect;
