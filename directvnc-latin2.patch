@@ -1,0 +1,179 @@
+--- directvnc-0.7.5/src/dfb.c.old	2006-12-18 18:47:53.000000000 +0100
++++ directvnc-0.7.5/src/dfb.c	2006-12-18 20:08:32.000000000 +0100
+@@ -386,11 +386,10 @@
+ ===========================================================================
+ */
+ 
+-
+ /* This table assumes an iso8859_1 encoding for the characters 
+  * > 80, as returned by pccons */
+-static KeySym latin1_to_x[256] = {
+-	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,
++static KeySym latin_to_x[2][256] = {
++{	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,
+ 	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,
+ 	XK_BackSpace,	XK_Tab,		XK_Linefeed,	XK_VoidSymbol,
+ 	XK_VoidSymbol,	XK_Return,	XK_VoidSymbol,	XK_VoidSymbol,
+@@ -454,7 +453,74 @@
+ 	XK_ocircumflex,	XK_otilde,	XK_odiaeresis,	XK_division,
+ 	XK_oslash,	XK_ugrave,	XK_uacute,	XK_ucircumflex,
+ 	XK_udiaeresis,	XK_yacute,	XK_thorn, 	XK_ydiaeresis
+-      };
++      },
++{
++/*00*/	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,
++/*04*/	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,
++/*08*/	XK_BackSpace,	XK_Tab,		XK_Linefeed,	XK_VoidSymbol,
++/*0C*/	XK_VoidSymbol,	XK_Return,	XK_VoidSymbol,	XK_VoidSymbol,
++/*10*/	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,
++/*14*/	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,
++/*18*/	XK_Cancel,	XK_VoidSymbol,	XK_VoidSymbol,	XK_Escape,
++/*1C*/	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,
++/*20*/	XK_space,	XK_exclam,	XK_quotedbl,	XK_numbersign,
++/*24*/	XK_dollar,	XK_percent,	XK_ampersand,	XK_apostrophe,
++/*28*/	XK_parenleft,	XK_parenright,	XK_asterisk,	XK_plus,
++/*2C*/	XK_comma,	XK_minus,	XK_period,	XK_slash,
++/*30*/	XK_0,		XK_1,		XK_2,		XK_3,
++/*34*/	XK_4,		XK_5,		XK_6,		XK_7,
++/*38*/	XK_8,		XK_9,		XK_colon,	XK_semicolon,
++/*3C*/	XK_less,	XK_equal,	XK_greater,	XK_question,
++/*40*/	XK_at,		XK_A,		XK_B,		XK_C,
++/*44*/	XK_D,		XK_E,		XK_F,		XK_G,
++/*48*/	XK_H,		XK_I,		XK_J,		XK_K,
++/*4C*/	XK_L,		XK_M,		XK_N,		XK_O,
++/*50*/	XK_P,		XK_Q,		XK_R,		XK_S,
++/*54*/	XK_T,		XK_U,		XK_V,		XK_W,
++/*58*/	XK_X,		XK_Y,		XK_Z,		XK_bracketleft,
++/*5C*/	XK_backslash,	XK_bracketright,XK_asciicircum,	XK_underscore,
++/*60*/	XK_grave,	XK_a,		XK_b,		XK_c,
++/*64*/	XK_d,		XK_e,		XK_f,		XK_g,
++/*68*/	XK_h,		XK_i,		XK_j,		XK_k,
++/*6C*/	XK_l,		XK_m,		XK_n,		XK_o,
++/*70*/	XK_p,		XK_q,		XK_r,		XK_s,
++/*74*/	XK_t,		XK_u,		XK_v,		XK_w,
++/*78*/	XK_x,		XK_y,		XK_z,		XK_braceleft,
++/*7C*/	XK_bar,		XK_braceright,	XK_asciitilde,	XK_Delete,
++/*80*/	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,
++/*84*/	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,
++/*88*/	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,
++/*8C*/	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,
++/*90*/	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,
++/*94*/	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,
++/*98*/	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,
++/*9C*/	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,	XK_VoidSymbol,
++/*A0*/	XK_nobreakspace,XK_Aogonek,	XK_breve,	XK_Lstroke,
++/*A4*/	XK_currency,	XK_Lcaron,	XK_Sacute,	XK_section,
++/*A8*/	XK_diaeresis,	XK_Scaron,	XK_Scedilla,	XK_Tcaron,
++/*AC*/	XK_Zacute,	XK_hyphen,	XK_Zcaron,	XK_Zabovedot,
++/*B0*/	XK_degree,	XK_aogonek,	XK_ogonek,	XK_lstroke,
++/*B4*/	XK_acute,	XK_lcaron,	XK_sacute,	XK_caron,
++/*B8*/	XK_cedilla,	XK_scaron,	XK_scedilla,	XK_tcaron,
++/*BC*/	XK_zacute,	XK_doubleacute,	XK_zcaron,	XK_zabovedot,
++/*C0*/	XK_Racute,	XK_Aacute,	XK_Acircumflex,	XK_Abreve,
++/*C4*/	XK_Adiaeresis,	XK_Lacute,	XK_Cacute,	XK_Ccedilla,
++/*C8*/	XK_Ccaron,	XK_Eacute,	XK_Eogonek,	XK_Ediaeresis,
++/*CC*/	XK_Ecaron,	XK_Iacute,	XK_Icircumflex,	XK_Dcaron,
++/*D0*/	XK_Dstroke,	XK_Nacute,	XK_Ncaron,	XK_Oacute,
++/*D4*/	XK_Ocircumflex,	XK_Odoubleacute,XK_Odiaeresis,	XK_multiply,
++/*D8*/	XK_Rcaron,	XK_Uring,	XK_Uacute,	XK_Udoubleacute,
++/*DC*/	XK_Udiaeresis,	XK_Yacute,	XK_Tcedilla,	XK_ssharp,
++/*E0*/	XK_racute,	XK_aacute,	XK_acircumflex,	XK_abreve,
++/*E4*/	XK_adiaeresis,	XK_lacute,	XK_cacute,	XK_ccedilla,
++/*E8*/	XK_ccaron,	XK_eacute,	XK_eogonek,	XK_ediaeresis,
++/*EC*/	XK_ecaron,	XK_iacute,	XK_icircumflex, XK_dcaron,
++/*F0*/	XK_dstroke,	XK_nacute,	XK_ncaron, 	XK_oacute,
++/*F4*/	XK_ocircumflex,	XK_odoubleacute,XK_odiaeresis,	XK_division,
++/*F8*/	XK_rcaron,	XK_uring,	XK_uacute,	XK_udoubleacute,
++/*FC*/	XK_udiaeresis,	XK_yacute,	XK_tcedilla, 	XK_abovedot
++}
++};
+ 
+ static DFBInputDeviceKeymapSymbolIndex diksi[4] = {
+   DIKSI_BASE,
+@@ -566,7 +632,7 @@
+     return XK_ISO_Left_Tab;
+ 
+   if (symbol > 0 && symbol < 256)
+-    return latin1_to_x[symbol];
++    return latin_to_x[opt.codepage][symbol];
+ 
+   if (DFB_KEY_TYPE (symbol) == DIKT_FUNCTION && symbol < DFB_FUNCTION_KEY(36))
+     return XK_F1 + symbol - DIKS_F1;
+--- directvnc-0.7.5/src/args.c.old	2006-12-18 19:38:51.000000000 +0100
++++ directvnc-0.7.5/src/args.c	2006-12-18 20:09:09.000000000 +0100
+@@ -35,7 +35,6 @@
+    if (argc <= 1)
+       show_usage_and_exit();
+ 
+-   
+    /* servername and display like so: 192.168.0.1:1 or so: localhost:2 */
+    buf = argv[1];
+ 
+@@ -71,6 +70,7 @@
+    opt.v_ratio = 1;
+    opt.h_offset = 0;
+    opt.v_offset = 0;
++   opt.codepage = 0;
+ 
+ #ifdef DEBUG
+    printf("server: %s\n", opt.servername);
+@@ -86,7 +86,7 @@
+ static void
+ _parse_options_array(int argc, char **argv) 
+ {
+-   static char stropts[] = "hvob:p:e:c:q:snlf:";
++   static char stropts[] = "hvob:p:e:c:q:snlf:i";
+    static struct option lopts[] = {
+       /* actions */
+       {"help", 0, 0, 'h'},
+@@ -101,6 +101,7 @@
+       {"noshared", 0, 0, 'n'},
+       {"nolocalcursor", 0, 0, 'l'},
+       {"pollfrequency", 1, 0, 'f'},
++      {"latin2", 0, 0, 'i'},
+       {0, 0, 0, 0}
+    };
+    int optch = 0, cmdx = 0;
+@@ -164,8 +165,9 @@
+ 	    if (quality >=0 && quality <= 9)
+ 	       opt.client.quality = quality;
+ 	    break;
+-
+-
++	case 'i':
++	    opt.codepage = 1;
++	    break;
+       }
+    }
+ }
+@@ -192,6 +194,7 @@
+  "  -l, --nolocalcursor        Disable local cursor handling.\n"
+  "  -c, --compresslevel        0..9 compression level to be used by zlib\n"
+  "  -q, --quality              0..9 quality level to be used by jpeg compression in tight encoding\n"
++ "  -i, --latin2               Use latin2 keysyms\n"
+  , VERSION);
+    exit(1);
+ }
+--- directvnc-0.7.5/src/directvnc.h.old	2006-12-18 20:03:04.000000000 +0100
++++ directvnc-0.7.5/src/directvnc.h	2006-12-18 20:04:53.000000000 +0100
+@@ -130,6 +130,7 @@
+    double v_ratio;
+    int h_offset;
+    int v_offset;
++   int codepage;
+ };
+ 
+ 
+--- directvnc-0.7.5/directvnc.1.old	2006-12-18 19:48:34.000000000 +0100
++++ directvnc-0.7.5/directvnc.1	2006-12-18 19:49:49.000000000 +0100
+@@ -91,6 +91,10 @@
+ that look suitable for lossy compression, so quality level 0 does not always
+ mean unacceptable image quality.
+ 
++.TP 5
++.B -i --latin2
++Use the latin2 table of keysyms.
++
+ .SH LIMITATIONS
+ Currently only 16 bpp color depth is supported.
+ .SH BUGS
