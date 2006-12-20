@@ -1,0 +1,22 @@
+--- directvnc-0.7.5/src/dfb.c.old	2006-12-20 17:42:32.000000000 +0100
++++ directvnc-0.7.5/src/dfb.c	2006-12-20 17:47:31.000000000 +0100
+@@ -269,7 +269,7 @@
+       {
+ 	 case DIET_KEYPRESS:
+ 	    /* quit on ctrl-q FIXME make this configurable*/
+-	    if (evt.key_id == DIKI_Q && evt.modifiers & DIMM_CONTROL)
++	    if (evt.key_id == DIKI_BACKSPACE && evt.modifiers & DIMM_CONTROL && evt.modifiers & DIMM_ALT)
+ 	    {
+ 	       /* Ugh.
+ 		* The control key is still pressed when we disconnect, so it 
+--- directvnc-0.7.5/directvnc.1.old	2006-12-20 17:41:39.000000000 +0100
++++ directvnc-0.7.5/directvnc.1	2006-12-20 17:42:12.000000000 +0100
+@@ -26,7 +26,7 @@
+ DirectVNC basically provides a very thin VNC client for unix framebuffer systems.
+ 
+ .SH QUITTING
+-Hitting <ctrl-q> exits the viewer.
++Hitting <ctrl-alt-backspace> exits the viewer.
+ 					      
+ .SH OPTIONS
+ .TP 5
