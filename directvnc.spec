@@ -13,6 +13,8 @@ Patch2:		%{name}-ctrl_alt_backspace.patch
 Patch3:		%{name}-3.3.7-tight.patch
 URL:		http://www.adam-lilienthal.de/directvnc/
 BuildRequires:	DirectFB-devel >= 0.9.24
+BuildRequires:	autoconf
+BuildRequires:	automake
 BuildRequires:	libtool
 BuildRequires:	libjpeg-devel
 BuildRequires:	pkgconfig
