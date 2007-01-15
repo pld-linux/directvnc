@@ -1,0 +1,1691 @@
+diff -Nru directvnc-0.7.5/src/caps.c directvnc-0.7.5.new/src/caps.c
+--- directvnc-0.7.5/src/caps.c	1970-01-01 01:00:00.000000000 +0100
++++ directvnc-0.7.5.new/src/caps.c	2007-01-15 14:48:51.000000000 +0100
+@@ -0,0 +1,246 @@
++/*
++ *  Copyright (C) 2003 Constantin Kaplinsky.  All Rights Reserved.
++ *
++ *  This is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2 of the License, or
++ *  (at your option) any later version.
++ *
++ *  This software is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this software; if not, write to the Free Software
++ *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
++ *  USA.
++ */
++
++/*
++ * caps.c
++ */
++
++#include "caps.h"
++#include "rfbproto.h"
++
++static int CapsIndex(CapsContainer *pcaps, CARD32 code);
++
++/*
++ * The constructor.
++ */
++
++CapsContainer *
++CapsNewContainer(void)
++{
++  CapsContainer *pcaps;
++
++  pcaps = malloc(sizeof(CapsContainer));
++  if (pcaps != NULL) {
++    pcaps->known_count = 0;
++    pcaps->enabled_count = 0;
++  }
++
++  return pcaps;
++}
++
++/*
++ * The destructor.
++ */
++
++void
++CapsDeleteContainer(CapsContainer *pcaps)
++{
++  int i;
++
++  for (i = 0; i < pcaps->known_count; i++) {
++    if (pcaps->descriptions[i] != NULL)
++      free(pcaps->descriptions[i]);
++  }
++
++  free(pcaps);
++}
++
++/*
++ * Add information about a particular capability into the object. There are
++ * two functions to perform this task. These functions overwrite capability
++ * records with the same code.
++ */
++
++void
++CapsAdd(CapsContainer *pcaps,
++        CARD32 code, char *vendor, char *name, char *desc)
++{
++  /* Fill in an rfbCapabilityInfo structure and pass it to CapsAddInfo(). */
++  rfbCapabilityInfo capinfo;
++  capinfo.code = code;
++  memcpy(capinfo.vendorSignature, vendor, sz_rfbCapabilityInfoVendor);
++  memcpy(capinfo.nameSignature, name, sz_rfbCapabilityInfoName);
++  CapsAddInfo(pcaps, &capinfo, desc);
++}
++
++void
++CapsAddInfo(CapsContainer *pcaps,
++            rfbCapabilityInfo *capinfo, char *desc)
++{
++  int i;
++  char *desc_copy;
++
++  i = CapsIndex(pcaps, capinfo->code);
++  if (i == -1) {
++    if (pcaps->known_count >= TIGHTVNC_MAX_CAPS) {
++      return;                   /* container full */
++    }
++    i = pcaps->known_count++;
++    pcaps->known_list[i] = capinfo->code;
++    pcaps->descriptions[i] = NULL;
++  }
++
++  pcaps->known_info[i] = *capinfo;
++  pcaps->enable_flags[i] = (char)0;
++  if (pcaps->descriptions[i] != NULL) {
++    free(pcaps->descriptions[i]);
++  }
++
++  desc_copy = NULL;
++  if (desc != NULL) {
++    desc_copy = strdup(desc);
++  }
++  pcaps->descriptions[i] = desc_copy;
++}
++
++/*
++ * Check if a capability with the specified code was added earlier.
++ */
++
++static int
++CapsIndex(CapsContainer *pcaps, CARD32 code)
++{
++  int i;
++
++  for (i = 0; i < pcaps->known_count; i++) {
++    if (pcaps->known_list[i] == code)
++      return i;
++  }
++
++  return -1;
++}
++
++int
++CapsIsKnown(CapsContainer *pcaps, CARD32 code)
++{
++  return (CapsIndex(pcaps, code) != -1);
++}
++
++/*
++ * Fill in a rfbCapabilityInfo structure with contents corresponding to the
++ * specified code. Returns True on success, False if the specified code is
++ * not known.
++ */
++
++int
++CapsGetInfo(CapsContainer *pcaps, CARD32 code, rfbCapabilityInfo *capinfo)
++{
++  int i;
++
++  i = CapsIndex(pcaps, code);
++  if (i != -1) {
++    *capinfo = pcaps->known_info[i];
++    return 1;
++  }
++
++  return 0;
++}
++
++/*
++ * Get a description string for the specified capability code. Returns NULL
++ * either if the code is not known, or if there is no description for this
++ * capability.
++ */
++
++char *
++CapsGetDescription(CapsContainer *pcaps, CARD32 code)
++{
++  int i;
++
++  i = CapsIndex(pcaps, code);
++  if (i != -1) {
++    return pcaps->descriptions[i];
++  }
++
++  return NULL;
++}
++
++/*
++ * Mark the specified capability as "enabled". This function checks "vendor"
++ * and "name" signatures in the existing record and in the argument structure
++ * and enables the capability only if both records are the same.
++ */
++
++int
++CapsEnable(CapsContainer *pcaps, rfbCapabilityInfo *capinfo)
++{
++  int i;
++  rfbCapabilityInfo *known;
++
++  i = CapsIndex(pcaps, capinfo->code);
++  if (i == -1)
++    return 0;
++
++  known = &pcaps->known_info[i];
++  if ( memcmp(known->vendorSignature, capinfo->vendorSignature,
++              sz_rfbCapabilityInfoVendor) != 0 ||
++       memcmp(known->nameSignature, capinfo->nameSignature,
++              sz_rfbCapabilityInfoName) != 0 ) {
++    pcaps->enable_flags[i] = (char)0;
++    return 0;
++  }
++
++  /* Cannot happen, but just in case. */
++  if (pcaps->enabled_count >= TIGHTVNC_MAX_CAPS) {
++    pcaps->enable_flags[i] = (char)0;
++    return 0;
++  }
++
++  pcaps->enable_flags[i] = (char)1;
++  pcaps->enabled_list[pcaps->enabled_count++] = capinfo->code;
++  return 1;
++}
++
++/*
++ * Check if the specified capability is known and enabled.
++ */
++
++int
++CapsIsEnabled(CapsContainer *pcaps, CARD32 code)
++{
++  int i;
++
++  i = CapsIndex(pcaps, code);
++  if (i != -1) {
++    return (pcaps->enable_flags[i] != (char)0);
++  }
++
++  return 0;
++}
++
++/*
++ * Return the number of enabled capabilities.
++ */
++
++int CapsNumEnabled(CapsContainer *pcaps)
++{
++  return pcaps->enabled_count;
++}
++
++/*
++ * Return the capability code at the specified index.
++ * If the index is not valid, return 0.
++ */
++
++CARD32
++CapsGetByOrder(CapsContainer *pcaps, int idx)
++{
++  return (idx < pcaps->enabled_count) ? pcaps->enabled_list[idx] : 0;
++}
++
+diff -Nru directvnc-0.7.5/src/caps.h directvnc-0.7.5.new/src/caps.h
+--- directvnc-0.7.5/src/caps.h	1970-01-01 01:00:00.000000000 +0100
++++ directvnc-0.7.5.new/src/caps.h	2007-01-15 14:46:50.000000000 +0100
+@@ -0,0 +1,64 @@
++/*
++ *  Copyright (C) 2003 Constantin Kaplinsky.  All Rights Reserved.
++ *
++ *  This is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2 of the License, or
++ *  (at your option) any later version.
++ *
++ *  This software is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this software; if not, write to the Free Software
++ *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
++ *  USA.
++ */
++
++/*
++ * caps.h
++ */
++
++#ifndef _VNC_CAPSCONTAINER
++#define _VNC_CAPSCONTAINER
++
++#include "directvnc.h"
++/* FIXME: Don't limit the number of capabilities. */
++#define TIGHTVNC_MAX_CAPS  64
++
++typedef struct _CapsContainer
++{
++  int known_count;
++  CARD32 known_list[TIGHTVNC_MAX_CAPS];
++  rfbCapabilityInfo known_info[TIGHTVNC_MAX_CAPS];
++  char *descriptions[TIGHTVNC_MAX_CAPS];
++  char enable_flags[TIGHTVNC_MAX_CAPS];
++
++  /* These are redundant, but improve the performance. */
++  int enabled_count;
++  CARD32 enabled_list[TIGHTVNC_MAX_CAPS];
++
++} CapsContainer;
++
++CapsContainer *CapsNewContainer(void);
++void CapsDeleteContainer(CapsContainer *pcaps);
++
++void CapsAdd(CapsContainer *pcaps,
++             CARD32 code, char *vendor, char *name, char *desc);
++void CapsAddInfo(CapsContainer *pcaps,
++                 rfbCapabilityInfo *capinfo, char *desc);
++
++int CapsIsKnown(CapsContainer *pcaps, CARD32 code);
++int CapsGetInfo(CapsContainer *pcaps, CARD32 code,
++                 rfbCapabilityInfo *capinfo);
++char *CapsGetDescription(CapsContainer *pcaps, CARD32 code);
++
++int CapsEnable(CapsContainer *pcaps, rfbCapabilityInfo *capinfo);
++int CapsIsEnabled(CapsContainer *pcaps, CARD32 code);
++int CapsNumEnabled(CapsContainer *pcaps);
++CARD32 CapsGetByOrder(CapsContainer *pcaps, int idx);
++
++#endif /* _VNC_CAPSCONTAINER */
++
+diff -Nru directvnc-0.7.5/src/cursor.c directvnc-0.7.5.new/src/cursor.c
+--- directvnc-0.7.5/src/cursor.c	2003-01-26 19:47:54.000000000 +0100
++++ directvnc-0.7.5.new/src/cursor.c	2007-01-15 19:59:32.000000000 +0100
+@@ -31,6 +31,15 @@
+ #define True 1
+ #define False 0
+ 
++#define RGB24_TO_PIXEL(bpp,r,g,b)                                       \
++   ((((CARD##bpp)(r) & 0xFF) * opt.client.redmax + 127) / 255             \
++    << opt.client.redshift |                                              \
++    (((CARD##bpp)(g) & 0xFF) * opt.client.greenmax + 127) / 255           \
++    << opt.client.greenshift |                                            \
++    (((CARD##bpp)(b) & 0xFF) * opt.client.bluemax + 127) / 255            \
++    << opt.client.blueshift)
++
++
+ 
+ /* Data kept for RichCursor encoding support. */
+ static Bool prevRichCursorSet = False;
+@@ -46,7 +55,6 @@
+ static void SoftCursorDraw(void);
+ static void FreeCursors(Bool setDotCursor);
+ 
+-
+ /*********************************************************************
+  * HandleRichCursor(). RichCursor shape updates support. This
+  * variation of cursor shape updates cannot be supported directly via
+@@ -54,13 +62,17 @@
+  * buffer (that is why we call it "software cursor").
+  ********************************************************************/
+ 
+-Bool HandleRichCursor(int xhot, int yhot, int width, int height)
++Bool HandleCursorShape(int xhot, int yhot, int width, int height, CARD32 enc)
+ {
++  int bytesPerPixel;
+   size_t bytesPerRow, bytesMaskData;
++  rfbXCursorColors rgb;
++  CARD32 colors[2];
+   char *buf;
+   CARD8 *ptr;
+   int x, y, b;
+ 
++  bytesPerPixel = opt.server.bpp / 8;
+   bytesPerRow = (width + 7) / 8;
+   bytesMaskData = bytesPerRow * height;
+ 
+@@ -75,11 +87,6 @@
+   if (rcSource == NULL)
+     return False;
+ 
+-  if (!read_from_rfb_server(sock, (char *)rcSource,
+-			 width * height * (opt.client.bpp / 8))) {
+-    free(rcSource);
+-    return False;
+-  }
+ 
+   /* Read and decode mask data. */
+ 
+@@ -89,6 +96,64 @@
+     return False;
+   }
+ 
++  /* Read and decode cursor pixel data, depending on the encoding type. */
++
++  if (enc == rfbEncodingXCursor) {
++
++    /* Read and convert background and foreground colors. */
++    if (!read_from_rfb_server(sock, (char *)&rgb, sz_rfbXCursorColors)) {
++      free(rcSource);
++      free(buf);
++      return False;
++    }
++    colors[0] = RGB24_TO_PIXEL(32, rgb.backRed, rgb.backGreen, rgb.backBlue);
++    colors[1] = RGB24_TO_PIXEL(32, rgb.foreRed, rgb.foreGreen, rgb.foreBlue);
++
++    /* Read 1bpp pixel data into a temporary buffer. */
++    if (!read_from_rfb_server(sock, buf, bytesMaskData)) {
++      free(rcSource);
++      free(buf);
++      return False;
++    }
++
++    /* Convert 1bpp data to byte-wide color indices. */
++    ptr = rcSource;
++    for (y = 0; y < height; y++) {
++      for (x = 0; x < width / 8; x++) {
++	for (b = 7; b >= 0; b--) {
++	  *ptr = buf[y * bytesPerRow + x] >> b & 1;
++	  ptr += bytesPerPixel;
++	}
++      }
++      for (b = 7; b > 7 - width % 8; b--) {
++	*ptr = buf[y * bytesPerRow + x] >> b & 1;
++	ptr += bytesPerPixel;
++      }
++    }
++
++    /* Convert indices into the actual pixel values. */
++    switch (bytesPerPixel) {
++    case 1:
++      for (x = 0; x < width * height; x++)
++	rcSource[x] = (CARD8)colors[rcSource[x]];
++      break;
++    case 2:
++      for (x = 0; x < width * height; x++)
++	((CARD16 *)rcSource)[x] = (CARD16)colors[rcSource[x * 2]];
++      break;
++    case 4:
++      for (x = 0; x < width * height; x++)
++	((CARD32 *)rcSource)[x] = colors[rcSource[x * 4]];
++      break;
++    }
++  } else { /* rfbEncodingRichCursor */
++    if (!read_from_rfb_server(sock, (char *)rcSource,
++		  	 width * height * (opt.client.bpp / 8))) {
++      free(rcSource);
++      return False;
++    }
++  }
++
+   if (!read_from_rfb_server(sock, buf, bytesMaskData)) {
+     free(rcSource);
+     free(buf);
+@@ -201,7 +266,8 @@
+  * SoftCursorUnlock() functions is called.
+  ********************************************************************/
+ 
+-void SoftCursorMove(int x, int y)
++void
++SoftCursorMove(int x, int y)
+ {
+   if (prevRichCursorSet && !rcCursorHidden) {
+     SoftCursorCopyArea(OPER_RESTORE);
+@@ -303,3 +369,20 @@
+   }
+ }
+ 
++/*********************************************************************
++ * HandleCursorPos(). Support for the PointerPos pseudo-encoding used
++ * to transmit changes in pointer position from server to clients.
++ * PointerPos encoding is used together with cursor shape updates.
++ ********************************************************************/
++
++int
++HandleCursorPos(int x, int y)
++{
++  if (x >= opt.server.width)
++    x = opt.server.width - 1;
++  if (y >= opt.server.height)
++    y = opt.server.height - 1;
++
++  SoftCursorMove(x, y);
++  return 1;
++}
+diff -Nru directvnc-0.7.5/src/directvnc.h directvnc-0.7.5.new/src/directvnc.h
+--- directvnc-0.7.5/src/directvnc.h	2007-01-15 22:06:18.000000000 +0100
++++ directvnc-0.7.5.new/src/directvnc.h	2007-01-15 20:02:12.000000000 +0100
+@@ -117,6 +117,7 @@
+ {
+    char *servername;
+    int port;
++   char *user;
+    char *password;
+    char *encodings;
+    struct serversettings server;
+@@ -142,6 +143,7 @@
+ int read_from_rfb_server(int sock, char *out, unsigned int n);
+ int write_exact(int sock, char *buf, unsigned int n);
+ int set_non_blocking(int sock);
++int SameMachine(int sock);
+ 
+ /* dfb.c */
+ void dfb_init(int argc, char *argv[]);
+@@ -157,12 +159,11 @@
+ void dfb_restore_cursor_rect( IDirectFBSurface *surf, int x, int y, int width, int heigth);
+ 
+ /* cursor.c */
+-int HandleRichCursor(int x, int y, int w, int h);
++int HandleCursorShape(int x, int y, int w, int h, CARD32 enc);
+ void SoftCursorLockArea(int x, int y, int w, int h);
+ void SoftCursorUnlockScreen(void);
+ void SoftCursorMove(int x, int y);
+ 
+-
+ /* macro for a safe call to DirectFB functions */
+ #define DFBCHECK(x...)                                                    \
+      {                                                                    \
+@@ -174,5 +175,3 @@
+      }
+ 
+ #endif
+-
+-
+diff -Nru directvnc-0.7.5/src/Makefile.am directvnc-0.7.5.new/src/Makefile.am
+--- directvnc-0.7.5/src/Makefile.am	2003-01-31 10:20:35.000000000 +0100
++++ directvnc-0.7.5.new/src/Makefile.am	2007-01-15 14:07:50.000000000 +0100
+@@ -9,7 +9,7 @@
+ LIBOBJS = @LIBOBJS@
+ 
+ bin_PROGRAMS      = directvnc
+-directvnc_SOURCES       = main.c debug.h dfb.c directvnc.h sockets.c args.c\
++directvnc_SOURCES       = caps.c caps.h main.c debug.h dfb.c directvnc.h sockets.c args.c\
+ 		       rfb.c getopt.c getopt1.c getopt.h\
+ 		       d3des.c d3des.h vncauth.c vncauth.h jpeg.c jpeg.h\
+ 		       tight.c tight.h rfbproto.h keysym.h keysymdef.h \
+diff -Nru directvnc-0.7.5/src/rfb.c directvnc-0.7.5.new/src/rfb.c
+--- directvnc-0.7.5/src/rfb.c	2003-01-31 09:41:03.000000000 +0100
++++ directvnc-0.7.5.new/src/rfb.c	2007-01-15 21:49:58.000000000 +0100
+@@ -17,7 +17,8 @@
+  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+  */
+ 
+-
++#include <pwd.h>
++#include <sys/types.h>
+ #include <unistd.h>
+ #include <sys/socket.h>
+ #include <errno.h>
+@@ -28,15 +29,25 @@
+ #include <math.h>
+ #include <zlib.h>
+ 
++#include "caps.h"
+ #include "directvnc.h"
+ #include "tight.h"
+ 
++static void InitCapabilities(void);
++static int SetupTunneling(void);
++static int ReadSecurityType(void);
++static int SelectSecurityType(void);
++static int PerformAuthenticationTight(void);
++static int AuthenticateVNC(void);
++static int AuthenticateUnixLogin(void);
++static int ReadInteractionCaps(void);
++static int ReadCapabilityList(CapsContainer *caps, int count);
++
+ int _rfb_negotiate_protocol ();
+ int _rfb_authenticate ();
+ int _rfb_initialise_client ();
+ int _rfb_initialise_server ();
+ 
+-
+ static int _handle_raw_encoded_message(rfbFramebufferUpdateRectHeader rectheader);
+ static int _handle_copyrect_encoded_message(rfbFramebufferUpdateRectHeader rectheader);
+ static int _handle_rre_encoded_message(rfbFramebufferUpdateRectHeader rectheader);
+@@ -44,6 +55,63 @@
+ static int _handle_hextile_encoded_message(rfbFramebufferUpdateRectHeader rectheader);
+ static int _handle_richcursor_message(rfbFramebufferUpdateRectHeader rectheader);
+ 
++static int tightVncProtocol = 0;
++static CapsContainer *tunnelCaps;    /* known tunneling/encryption methods */
++static CapsContainer *authCaps;	     /* known authentication schemes       */
++static CapsContainer *serverMsgCaps; /* known non-standard server messages */
++static CapsContainer *clientMsgCaps; /* known non-standard client messages */
++static CapsContainer *encodingCaps;  /* known encodings besides Raw        */
++static int tunnelSpecified = 0;
++
++/*
++ * InitCapabilities.
++ */
++
++static void
++InitCapabilities(void)
++{
++  tunnelCaps    = CapsNewContainer();
++  authCaps      = CapsNewContainer();
++  serverMsgCaps = CapsNewContainer();
++  clientMsgCaps = CapsNewContainer();
++  encodingCaps  = CapsNewContainer();
++
++  /* Supported authentication methods */
++  CapsAdd(authCaps, rfbAuthVNC, rfbStandardVendor, sig_rfbAuthVNC,
++	  "Standard VNC password authentication");
++  CapsAdd(authCaps, rfbAuthUnixLogin, rfbTightVncVendor, sig_rfbAuthUnixLogin,
++	  "Login-style Unix authentication");
++
++  /* Supported encoding types */
++  CapsAdd(encodingCaps, rfbEncodingCopyRect, rfbStandardVendor,
++	  sig_rfbEncodingCopyRect, "Standard CopyRect encoding");
++  CapsAdd(encodingCaps, rfbEncodingRRE, rfbStandardVendor,
++	  sig_rfbEncodingRRE, "Standard RRE encoding");
++  CapsAdd(encodingCaps, rfbEncodingCoRRE, rfbStandardVendor,
++	  sig_rfbEncodingCoRRE, "Standard CoRRE encoding");
++  CapsAdd(encodingCaps, rfbEncodingHextile, rfbStandardVendor,
++	  sig_rfbEncodingHextile, "Standard Hextile encoding");
++  CapsAdd(encodingCaps, rfbEncodingZlib, rfbTridiaVncVendor,
++	  sig_rfbEncodingZlib, "Zlib encoding from TridiaVNC");
++  CapsAdd(encodingCaps, rfbEncodingTight, rfbTightVncVendor,
++	  sig_rfbEncodingTight, "Tight encoding by Constantin Kaplinsky");
++
++  /* Supported "fake" encoding types */
++  CapsAdd(encodingCaps, rfbEncodingCompressLevel0, rfbTightVncVendor,
++	  sig_rfbEncodingCompressLevel0, "Compression level");
++  CapsAdd(encodingCaps, rfbEncodingQualityLevel0, rfbTightVncVendor,
++	  sig_rfbEncodingQualityLevel0, "JPEG quality level");
++  CapsAdd(encodingCaps, rfbEncodingXCursor, rfbTightVncVendor,
++	  sig_rfbEncodingXCursor, "X-style cursor shape update");
++  CapsAdd(encodingCaps, rfbEncodingRichCursor, rfbTightVncVendor,
++	  sig_rfbEncodingRichCursor, "Rich-color cursor shape update");
++  CapsAdd(encodingCaps, rfbEncodingPointerPos, rfbTightVncVendor,
++	  sig_rfbEncodingPointerPos, "Pointer position update");
++  CapsAdd(encodingCaps, rfbEncodingLastRect, rfbTightVncVendor, 
++	  sig_rfbEncodingLastRect, "LastRect protocol extension");
++}
++
++
+ /*
+  * ConnectToRFBServer.
+  */
+@@ -100,89 +168,393 @@
+ int
+ rfb_initialise_connection ()   
+ {
+-   if (!_rfb_negotiate_protocol()) return 0;
+-   if (!_rfb_authenticate()) return 0;
+-   if (!_rfb_initialise_client()) return 0;
+-   if (!_rfb_initialise_server()) return 0;
+-   
+-   return(1);
++  if (!_rfb_negotiate_protocol()) return 0;
++  if (!_rfb_initialise_client()) return 0;
++  if (!_rfb_initialise_server()) return 0;
++  return 1;
+ }
+ 
+ int
+ _rfb_negotiate_protocol()
+ {
+    rfbProtocolVersionMsg msg;
++   int server_major, server_minor;
++   int viewer_major, viewer_minor;
++   int secType;
+  
+    /* read the protocol version the server uses */
+    if (!read_from_rfb_server(sock, (char*)&msg, sz_rfbProtocolVersionMsg))
+       return 0;
+-   /* FIXME actually do something with that information ;) */
+ 
++   msg[sz_rfbProtocolVersionMsg] = 0;
++
++   if (sscanf(msg, rfbProtocolVersionFormat, &server_major, &server_minor) != 2) {
++     return 0;		
++   }
++   viewer_major = rfbProtocolMajorVersion;
++   if (server_major == 3 && server_minor >= rfbProtocolMinorVersion) {
++     /* the server supports at least the standard protocol 3.7 */
++	   viewer_minor = rfbProtocolMinorVersion;
++   } else {
++	   /* any other server version, request the standard 3.3 */
++	   viewer_minor = rfbProtocolFallbackMinorVersion;
++   }
+    /* send the protocol version we want to use */
+-   sprintf(msg, rfbProtocolVersionFormat, 
+-	        rfbProtocolMajorVersion, 
+-		rfbProtocolMinorVersion);
++   sprintf(msg, rfbProtocolVersionFormat,
++	        viewer_major, 
++		viewer_minor);
+    if (!write_exact (sock, msg, sz_rfbProtocolVersionMsg))
+       return 0;
+ 
+-   return 1;
++   /* Read or select the security type. */
++   if (viewer_minor == rfbProtocolMinorVersion) {
++   	secType = SelectSecurityType();
++   } else {
++    secType = ReadSecurityType();
++   }
++   if (secType == rfbConnFailed)
++	   return 0;
++
++   return _rfb_authenticate(secType);
+ }
+ 
++static int
++ReadSecurityType(void)
++{
++	CARD32 secType;
++	if (!read_from_rfb_server(sock, (char *)&secType, sizeof(secType))) {
++		return rfbConnFailed;
++	}
++	return Swap32IfLE(secType);
++}
+ 
+-int
+-_rfb_authenticate()
++static int
++SelectSecurityType(void)
+ {
+-   CARD32 authscheme;
+-  
+-   read_from_rfb_server(sock, (char *)&authscheme, 4);
+-   authscheme = Swap32IfLE(authscheme);
+-   switch (authscheme)
+-   {
+-      CARD32 reason_length;
+-      CARD8 *reason_string;
+-      CARD8 challenge_and_response[CHALLENGESIZE];
+-      CARD32 auth_result;
+-      
+-      case rfbConnFailed:	 	
+-         fprintf(stderr, "DIRECTVNC: Connection to VNC server failed\n");
+-	 read_from_rfb_server(sock, (char *)&reason_length, 4);
+-	 reason_length = Swap32IfLE(reason_length);
+-	 reason_string = malloc(sizeof(CARD8) * reason_length);
+-	 read_from_rfb_server(sock, (char *)reason_string, reason_length);
+-	 fprintf(stderr, "Errormessage: %s\n", reason_string); 
+-	 return (0);
+-      case rfbVncAuth:
++	CARD8 nSecTypes;
++	char *secTypeNames[] = {"None", "VncAuth"};
++	CARD8 knownSecTypes[] = {rfbNoAuth, rfbVncAuth};
++	int nKnownSecTypes = sizeof(knownSecTypes);
++	CARD8 *secTypes;
++	CARD8 secType = rfbConnFailed;
++	int i, j;
++
++	/* Read the list of security types. */
++	if (!read_from_rfb_server(sock, (char *)&nSecTypes, sizeof(nSecTypes)))
++		return rfbConnFailed;
++	if (nSecTypes == 0) {
++		return rfbConnFailed;
++	}
++
++	secTypes = malloc(nSecTypes);
++	if (!read_from_rfb_server(sock, (char *)secTypes, nSecTypes))
++		return rfbConnFailed;
++
++	/* Find out if the server supports TightVNC protocol extensions */
++	for (j = 0; j < (int)nSecTypes; j++) {
++		if (secTypes[j] == rfbSecTypeTight) {
++			free(secTypes);
++			secType = rfbSecTypeTight;
++			if (!write_exact(sock, (char *)&secType, sizeof(secType)))
++				return rfbConnFailed;
++			fprintf(stderr, "Enabling TightVNC protocol extensions\n");
++			return rfbSecTypeTight;
++		}
++	}
++	/* Find first supported security type */
++	for (j = 0; j < (int)nSecTypes; j++) {
++		for (i = 0; i < nKnownSecTypes; i++) {
++			if (secTypes[j] == knownSecTypes[i]) {
++				secType = secTypes[j];
++				if (!write_exact(sock, (char *)&secType, sizeof(secType))) {
++					free(secTypes);
++					return rfbConnFailed;
++				}
++				break;
++			}
++		}
++		if (secType != rfbConnFailed) break;
++	}
++	free(secTypes);
++	if (secType == rfbConnFailed)
++		fprintf(stderr, "Server did not offer supported security type\n");
++	return (int)secType;
+ 
+-	 /* we didnt get a password on the command line, so go get one */
+-         if (!opt.password) opt.password = getpass("Password: ");
++}
+ 
+-	 if (!read_from_rfb_server(sock, challenge_and_response, CHALLENGESIZE))
+-	    return 0;
+-	 vncEncryptBytes(challenge_and_response, opt.password);
+-	 if (!write_exact(sock, challenge_and_response, CHALLENGESIZE))
+-	    return 0;
+-	 if (!read_from_rfb_server(sock, (char*)&auth_result, 4))
++/*
++ * Standard VNC authentication.
++ */
++
++static int
++AuthenticateVNC(void)
++{
++  CARD32 authScheme, auth_result;
++  CARD8 challenge[CHALLENGESIZE];
++  char *passwd;
++  char  buffer[64];
++  char* cstatus;
++  int   len;
++
++  fprintf(stderr, "Performing standard VNC authentication\n");
++
++  if (!read_from_rfb_server(sock, (char *)challenge, CHALLENGESIZE))
++    return 0;
++
++
++  /* we  get a password on the command line, so go get one */
++  if (!opt.password) opt.password = getpass("Password: ");
++  if (strlen(opt.password) > 8) {
++    opt.password[8] = '\0';
++  }
++
++	vncEncryptBytes(challenge, opt.password);
++  /* Lose the password from memory */
++  memset(opt.password, '\0', strlen(opt.password));
++
++	if (!write_exact(sock, challenge, CHALLENGESIZE))
++	   return 0;
++	if (!read_from_rfb_server(sock, (char*)&auth_result, 4))
+ 	    return 0;
+-	 auth_result = Swap32IfLE(auth_result);
+-	 switch (auth_result)
+-	 {
+-	    case rfbVncAuthFailed:
+-	       fprintf(stderr, "Authentication Failed\n");
+-	       return (0);
+-	    case rfbVncAuthTooMany:
+-	       fprintf(stderr, "Too many connections\n");
+-	       return (0);
+-	    case rfbVncAuthOK:
+-	       fprintf(stderr, "Authentication OK\n");
+-	       break;
+-	 }
+-	 break;
+-      case rfbNoAuth:
+-	 break;
++	auth_result = Swap32IfLE(auth_result);
++	switch (auth_result) {
++  case rfbVncAuthFailed:
++    fprintf(stderr, "Authentication Failed\n");
++    return 0;
++  case rfbVncAuthTooMany:
++    fprintf(stderr, "Too many connections\n");
++    return 0;
++  case rfbVncAuthOK:
++    fprintf(stderr, "Authentication OK\n");
++	  break;
++  }
++  return 1;
++}
++
++
++/*
++ * Read the list of rfbCapabilityInfo structures and enable corresponding
++ * capabilities in the specified container. The count argument specifies how
++ * many records to read from the socket.
++ */
++
++static int
++ReadCapabilityList(CapsContainer *caps, int count)
++{
++  rfbCapabilityInfo msginfo;
++  int i;
++
++  for (i = 0; i < count; i++) {
++    if (!read_from_rfb_server(sock, (char *)&msginfo, sz_rfbCapabilityInfo))
++      return 0;
++    msginfo.code = Swap32IfLE(msginfo.code);
++    CapsEnable(caps, &msginfo);
++  }
++
++  return 1;
++}
++
++/*
++ * Unix login-style authentication.
++ */
++
++static int
++AuthenticateUnixLogin(void)
++{
++  CARD32 loginLen, passwdLen, authResult;
++  char *login;
++  char *passwd;
++  struct passwd *ps;
++
++  fprintf(stderr, "Performing Unix login-style authentication\n");
++
++  if (opt.user) {
++    login = opt.user;
++  } else {
++    ps = getpwuid(getuid());
++    login = ps->pw_name;
++  }
++
++  fprintf(stderr, "Using user name \"%s\"\n", login);
++
++  passwd = getpass("Password: ");
++
++  if (!passwd || strlen(passwd) == 0) {
++    fprintf(stderr, "Reading password failed\n");
++    return 0;
++  }
++
++  loginLen = Swap32IfLE((CARD32)strlen(login));
++  passwdLen = Swap32IfLE((CARD32)strlen(passwd));
++
++  if (!write_exact(sock, (char *)&loginLen, sizeof(loginLen)) ||
++      !write_exact(sock, (char *)&passwdLen, sizeof(passwdLen)))
++    return 0;
++
++  if (!write_exact(sock, login, strlen(login)) ||
++      !write_exact(sock, passwd, strlen(passwd)))
++    return 0;
++
++  /* Lose the password from memory */
++  memset(passwd, '\0', strlen(passwd));
++
++  if (!read_from_rfb_server(sock, (char *)&authResult, sizeof(authResult)))
++    return 0;
++
++  authResult = Swap32IfLE(authResult);
++
++  switch (authResult) {
++  case rfbVncAuthOK:
++    fprintf(stderr, "Authentication succeeded\n");
++    break;
++  case rfbVncAuthFailed:
++    fprintf(stderr, "Authentication failed\n");
++    return 0;
++  case rfbVncAuthTooMany:
++    fprintf(stderr, "Authentication failed - too many tries\n");
++    return 0;
++  default:
++    fprintf(stderr, "Unknown authentication result: %d\n",
++	    (int)authResult);
++    return 0;
++  }
++
++  return 1;
++}
++
++
++int
++_rfb_authenticate(CARD32 authscheme)
++{
++  switch (authscheme) {
++    CARD32 reason_length;
++    CARD8 *reason_string;
++    CARD8 challenge_and_response[CHALLENGESIZE];
++    CARD32 auth_result;
++
++    case rfbConnFailed:	 	
++      fprintf(stderr, "DIRECTVNC: Connection to VNC server failed\n");
++      read_from_rfb_server(sock, (char *)&reason_length, 4);
++      reason_length = Swap32IfLE(reason_length);
++      reason_string = malloc(sizeof(CARD8) * reason_length);
++      read_from_rfb_server(sock, (char *)reason_string, reason_length);
++      fprintf(stderr, "Errormessage: %s\n", reason_string);
++      return 0;
++    case rfbVncAuth:
++      return AuthenticateVNC();
++    case rfbNoAuth:
++      break;
++    case rfbSecTypeTight:
++      tightVncProtocol = 1;
++      InitCapabilities();
++      if (!SetupTunneling()) return 0;
++      if (!PerformAuthenticationTight()) return 0;
++      break;
++    default:
++      fprintf(stderr, "Internal error: Invalid security type\n");
++      return 0;
+    } 
+    return 1;
+ }
+ 
++static int
++SetupTunneling(void)
++{
++  rfbTunnelingCapsMsg caps;
++  CARD32 tunnelType;
++
++  /* In the protocol version 3.7t, the server informs us about
++  supported tunneling methods. Here we read this information. */
++
++  if (!read_from_rfb_server(sock, (char *)&caps, sz_rfbTunnelingCapsMsg)) return 0;
++  caps.nTunnelTypes = Swap32IfLE(caps.nTunnelTypes);
++
++  if (caps.nTunnelTypes) {
++    if (!ReadCapabilityList(tunnelCaps, caps.nTunnelTypes)) return 0;
++
++    /* We cannot do tunneling anyway yet. */
++    tunnelType = Swap32IfLE(rfbNoTunneling);
++    if (!write_exact(sock, (char *)&tunnelType, sizeof(tunnelType))) return 0;
++  }
++  return 1;
++}
++
++/* Negotiate authentication scheme (protocol version 3.7t) */
++static int
++PerformAuthenticationTight(void)
++{
++  rfbAuthenticationCapsMsg caps;
++  CARD32 authScheme;
++  int i;
++
++  /* In the protocol version 3.7t, the server informs us about supported
++  authentication schemes. Here we read this infomation. */
++
++  if (!read_from_rfb_server(sock, (char *)&caps, sz_rfbAuthenticationCapsMsg)) return 0;
++
++  caps.nAuthTypes = Swap32IfLE(caps.nAuthTypes);
++
++  if (!caps.nAuthTypes) {
++    fprintf(stderr, "No authentication needed\n");
++    return 1;
++  }
++
++  if (!ReadCapabilityList(authCaps, caps.nAuthTypes)) return 0;
++
++  /* Prefer Unix login authentication if a user name was given. */
++  if (opt.user && CapsIsEnabled(authCaps, rfbAuthUnixLogin)) {
++    authScheme = Swap32IfLE(rfbAuthUnixLogin);
++    if (!write_exact(sock, (char *)&authScheme, sizeof(authScheme))) return 0;
++    return AuthenticateUnixLogin();
++  }
++
++  /* Otherwise, try server's preferred authentication scheme. */
++  for (i = 0; i < CapsNumEnabled(authCaps); i++) {
++    authScheme = CapsGetByOrder(authCaps, i);
++    if (authScheme != rfbAuthUnixLogin && authScheme != rfbAuthVNC) continue; /* unknown scheme - cannot use it */
++    authScheme = Swap32IfLE(authScheme);
++    if (!write_exact(sock, (char *)&authScheme, sizeof(authScheme))) return 0;
++    authScheme = Swap32IfLE(authScheme); /* convert it back */
++
++    if (authScheme == rfbAuthUnixLogin) {
++      return AuthenticateUnixLogin();
++    } else if (authScheme == rfbAuthVNC) {
++      return AuthenticateVNC();
++    } else {
++      fprintf(stderr, "Should never happen\n");
++      /* Should never happen. */
++      return 0;
++    }
++  }
++
++  fprintf(stderr, "No suitable authentication schemes offered by server\n");
++  return 0;
++}
++
++/*
++ * In the protocol version 3.7t, the server informs us about supported
++ * protocol messages and encodings. Here we read this information.
++ */
++
++static int
++ReadInteractionCaps(void)
++{
++  rfbInteractionCapsMsg intr_caps;
++
++  /* Read the counts of list items following */
++  if (!read_from_rfb_server(sock, (char *)&intr_caps, sz_rfbInteractionCapsMsg))
++    return 0;
++  intr_caps.nServerMessageTypes = Swap16IfLE(intr_caps.nServerMessageTypes);
++  intr_caps.nClientMessageTypes = Swap16IfLE(intr_caps.nClientMessageTypes);
++  intr_caps.nEncodingTypes = Swap16IfLE(intr_caps.nEncodingTypes);
++
++  /* Read the lists of server- and client-initiated messages */
++  return (ReadCapabilityList(serverMsgCaps, intr_caps.nServerMessageTypes) &&
++	  ReadCapabilityList(clientMsgCaps, intr_caps.nClientMessageTypes) &&
++	  ReadCapabilityList(encodingCaps, intr_caps.nEncodingTypes));
++}
++
++
+ int
+ _rfb_initialise_client()
+ {
+@@ -220,10 +592,166 @@
+ 
+    if (!read_from_rfb_server(sock, opt.server.name, len))
+       return 0;
+-
++   if (tightVncProtocol) {
++    /* Read interaction capabilities (protocol 3.7t) */
++    if (!ReadInteractionCaps())
++      return 0;
++  }
+    return 1;
+ }
+ 
++/*
++ * SetFormatAndEncodings.
++ */
++
++int
++rfb_set_format_and_encodings()
++{
++  rfbSetPixelFormatMsg spf;
++  char buf[sz_rfbSetEncodingsMsg + MAX_ENCODINGS * 4];
++  rfbSetEncodingsMsg *se = (rfbSetEncodingsMsg *)buf;
++  CARD32 *encs = (CARD32 *)(&buf[sz_rfbSetEncodingsMsg]);
++  int len = 0;
++  int requestCompressLevel = 0;
++  int requestQualityLevel = 0;
++  int requestLastRectEncoding = 0;
++
++  spf.type = 0;
++  spf.format.bitsPerPixel = opt.client.bpp;
++  spf.format.depth = opt.client.depth;
++  spf.format.bigEndian = opt.client.bigendian;
++  spf.format.trueColour = opt.client.truecolour;
++  spf.format.redMax = Swap16IfLE(opt.client.redmax);
++  spf.format.greenMax = Swap16IfLE(opt.client.greenmax);
++  spf.format.blueMax = Swap16IfLE(opt.client.bluemax);
++  spf.format.redShift =opt.client.redshift;
++  spf.format.greenShift = opt.client.greenshift;
++  spf.format.blueShift = opt.client.blueshift;
++
++  if (!write_exact(sock, (char *)&spf, sz_rfbSetPixelFormatMsg))
++    return 0;
++
++  se->type = rfbSetEncodings;
++  se->nEncodings = 0;
++
++  if (opt.encodings) {
++    char *encStr = opt.encodings;
++    int encStrLen;
++    do {
++      char *nextEncStr = strchr(encStr, ' ');
++      if (nextEncStr) {
++        encStrLen = nextEncStr - encStr;
++        nextEncStr++;
++      } else {
++        encStrLen = strlen(encStr);
++      }
++
++      if (strncasecmp(encStr,"raw",encStrLen) == 0) {
++        encs[se->nEncodings++] = Swap32IfLE(rfbEncodingRaw);
++      } else if (strncasecmp(encStr,"copyrect",encStrLen) == 0) {
++        encs[se->nEncodings++] = Swap32IfLE(rfbEncodingCopyRect);
++      } else if (strncasecmp(encStr,"tight",encStrLen) == 0) {
++        encs[se->nEncodings++] = Swap32IfLE(rfbEncodingTight);
++        requestLastRectEncoding = 1;
++        if (opt.client.compresslevel >= 0 && opt.client.compresslevel <= 9)
++          requestCompressLevel = 1;
++        requestQualityLevel = 1;
++      } else if (strncasecmp(encStr,"hextile",encStrLen) == 0) {
++        encs[se->nEncodings++] = Swap32IfLE(rfbEncodingHextile);
++      } else if (strncasecmp(encStr,"zlib",encStrLen) == 0) {
++        encs[se->nEncodings++] = Swap32IfLE(rfbEncodingZlib);
++        if (opt.client.compresslevel >= 0 && opt.client.compresslevel <= 9)
++          requestCompressLevel = 1;
++      } else if (strncasecmp(encStr,"corre",encStrLen) == 0) {
++        encs[se->nEncodings++] = Swap32IfLE(rfbEncodingCoRRE);
++      } else if (strncasecmp(encStr,"rre",encStrLen) == 0) {
++        encs[se->nEncodings++] = Swap32IfLE(rfbEncodingRRE);
++      } else {
++        fprintf(stderr,"Unknown encoding '%.*s'\n",encStrLen,encStr);
++      }
++
++      encStr = nextEncStr;
++    } while (encStr && se->nEncodings < MAX_ENCODINGS);
++
++    if (se->nEncodings < MAX_ENCODINGS && requestCompressLevel) {
++      encs[se->nEncodings++] = Swap32IfLE(opt.client.compresslevel +
++					  rfbEncodingCompressLevel0);
++    }
++
++    if (se->nEncodings < MAX_ENCODINGS && requestQualityLevel) {
++      if (opt.client.quality < 0 || opt.client.quality > 9)
++        opt.client.quality = 5;
++      encs[se->nEncodings++] = Swap32IfLE(opt.client.quality +
++					  rfbEncodingQualityLevel0);
++    }
++
++    if (opt.localcursor) {
++      if (se->nEncodings < MAX_ENCODINGS)
++        encs[se->nEncodings++] = Swap32IfLE(rfbEncodingXCursor);
++      if (se->nEncodings < MAX_ENCODINGS)
++        encs[se->nEncodings++] = Swap32IfLE(rfbEncodingRichCursor);
++      if (se->nEncodings < MAX_ENCODINGS)
++        encs[se->nEncodings++] = Swap32IfLE(rfbEncodingPointerPos);
++    }
++
++    if (se->nEncodings < MAX_ENCODINGS && requestLastRectEncoding) {
++      encs[se->nEncodings++] = Swap32IfLE(rfbEncodingLastRect);
++    }
++  } else {
++    if (SameMachine(sock)) {
++      if (!tunnelSpecified) {
++        fprintf(stderr,"Same machine: preferring raw encoding\n");
++        encs[se->nEncodings++] = Swap32IfLE(rfbEncodingRaw);
++      } else {
++        fprintf(stderr,"Tunneling active: preferring tight encoding\n");
++      }
++    }
++
++    encs[se->nEncodings++] = Swap32IfLE(rfbEncodingCopyRect);
++    encs[se->nEncodings++] = Swap32IfLE(rfbEncodingTight);
++    encs[se->nEncodings++] = Swap32IfLE(rfbEncodingHextile);
++    encs[se->nEncodings++] = Swap32IfLE(rfbEncodingZlib);
++    encs[se->nEncodings++] = Swap32IfLE(rfbEncodingCoRRE);
++    encs[se->nEncodings++] = Swap32IfLE(rfbEncodingRRE);
++
++    if (opt.client.compresslevel >= 0 && opt.client.compresslevel <= 9) {
++      encs[se->nEncodings++] = Swap32IfLE(opt.client.compresslevel +
++					  rfbEncodingCompressLevel0);
++    } else if (!tunnelSpecified) {
++      /* If -tunnel option was provided, we assume that server machine is
++	 not in the local network so we use default compression level for
++	 tight encoding instead of fast compression. Thus we are
++	 requesting level 1 compression only if tunneling is not used. */
++      encs[se->nEncodings++] = Swap32IfLE(rfbEncodingCompressLevel1);
++    }
++#if 0
++    if (appData.enableJPEG) {
++      if (appData.qualityLevel < 0 || appData.qualityLevel > 9)
++	appData.qualityLevel = 5;
++      encs[se->nEncodings++] = Swap32IfLE(appData.qualityLevel +
++					  rfbEncodingQualityLevel0);
++    }
++#endif
++
++    if (opt.localcursor) {
++      encs[se->nEncodings++] = Swap32IfLE(rfbEncodingXCursor);
++      encs[se->nEncodings++] = Swap32IfLE(rfbEncodingRichCursor);
++      encs[se->nEncodings++] = Swap32IfLE(rfbEncodingPointerPos);
++    }
++
++    encs[se->nEncodings++] = Swap32IfLE(rfbEncodingLastRect);
++  }
++
++  len = sz_rfbSetEncodingsMsg + se->nEncodings * 4;
++
++  se->nEncodings = Swap16IfLE(se->nEncodings);
++
++  if (!write_exact(sock, buf, len)) return 0;
++
++  return 1;
++}
++
++#if 0
+ int
+ rfb_set_format_and_encodings()
+ {
+@@ -312,7 +840,7 @@
+ 
+    return(1);
+ }
+-
++#endif
+ 
+ int
+ rfb_send_update_request(int incremental)
+@@ -347,84 +875,93 @@
+    rfbFramebufferUpdateRectHeader rectheader;
+    
+    if (!read_from_rfb_server(sock, (char*)&msg, 1)) return 0;
+-   switch (msg.type)
+-   {
+-      int i;
+-      case rfbFramebufferUpdate:
+-	 read_from_rfb_server(sock, ((char*)&msg.fu)+1, sz_rfbFramebufferUpdateMsg-1);
+-	 msg.fu.nRects = Swap16IfLE(msg.fu.nRects);
+-	 for (i=0;i< msg.fu.nRects;i++)
+-	 {
+-	    read_from_rfb_server(sock, (char*)&rectheader, 
+-		  sz_rfbFramebufferUpdateRectHeader);
+-	    rectheader.r.x = Swap16IfLE(rectheader.r.x);
+-	    rectheader.r.y = Swap16IfLE(rectheader.r.y);
+-	    rectheader.r.w = Swap16IfLE(rectheader.r.w);
+-	    rectheader.r.h = Swap16IfLE(rectheader.r.h);
+-	    rectheader.encoding = Swap32IfLE(rectheader.encoding);
+-	    SoftCursorLockArea(rectheader.r.x, rectheader.r.y, rectheader.r.w, rectheader.r.h); 
+-	    switch (rectheader.encoding)
+-	    {
+-	       case rfbEncodingRaw:
+-		  _handle_raw_encoded_message(rectheader);		  
+-		  break;
+-	       case rfbEncodingCopyRect:
+-		  _handle_copyrect_encoded_message(rectheader); 
+-		  break;
+-	       case rfbEncodingRRE:
+-		  _handle_rre_encoded_message(rectheader);
+-		  break;
+-	       case rfbEncodingCoRRE:
+-		  _handle_corre_encoded_message(rectheader);
+-		  break;
+-	       case rfbEncodingHextile:
+-		  _handle_hextile_encoded_message(rectheader);
+-		  break;
+-	       case rfbEncodingTight:
+-		  _handle_tight_encoded_message(rectheader);
+-		  break;
+-	       case rfbEncodingZlib:
+-		  _handle_zlib_encoded_message(rectheader);
+-		  break;
+-	       case rfbEncodingRichCursor:
+-		  _handle_richcursor_message(rectheader);
+-		  break;
++   switch (msg.type) {
++   int i;
++   case rfbFramebufferUpdate:
++      read_from_rfb_server(sock, ((char*)&msg.fu)+1, sz_rfbFramebufferUpdateMsg-1);
++      msg.fu.nRects = Swap16IfLE(msg.fu.nRects);
++
++      for (i=0;i< msg.fu.nRects;i++) {
++        read_from_rfb_server(sock, (char*)&rectheader, sz_rfbFramebufferUpdateRectHeader);
++        rectheader.r.x = Swap16IfLE(rectheader.r.x);
++        rectheader.r.y = Swap16IfLE(rectheader.r.y);
++        rectheader.r.w = Swap16IfLE(rectheader.r.w);
++        rectheader.r.h = Swap16IfLE(rectheader.r.h);
++        rectheader.encoding = Swap32IfLE(rectheader.encoding);
++        if (rectheader.encoding == rfbEncodingLastRect) break;
++
++        if (rectheader.encoding == rfbEncodingPointerPos) {
++          if (!HandleCursorPos(rectheader.r.x, rectheader.r.y)) {
++            return 0;
++          }
++          continue;
++        }
++        SoftCursorLockArea(rectheader.r.x, rectheader.r.y, rectheader.r.w, rectheader.r.h); 
++
++        switch (rectheader.encoding) {
++	      case rfbEncodingRaw:
++          _handle_raw_encoded_message(rectheader);		  
++		      break;
++	      case rfbEncodingCopyRect:
++		      _handle_copyrect_encoded_message(rectheader); 
++		      break;
++	      case rfbEncodingRRE:
++		      _handle_rre_encoded_message(rectheader);
++		      break;
++	      case rfbEncodingCoRRE:
++		      _handle_corre_encoded_message(rectheader);
++		      break;
++	      case rfbEncodingHextile:
++		      _handle_hextile_encoded_message(rectheader);
++		      break;
++	      case rfbEncodingTight:
++          _handle_tight_encoded_message(rectheader);
++          break;
++        case rfbEncodingZlib:
++          _handle_zlib_encoded_message(rectheader);
++          break;
++	      case rfbEncodingRichCursor:
++        case rfbEncodingXCursor:
++          _handle_richcursor_message(rectheader);
++          break;
++#if 0
+ 	       case rfbEncodingLastRect:
+-		  printf("LAST\n");
++		  fprintf(stderr, "LAST\n");
+ 		  break;
+-		  
+-	       default:
+-		  printf("Unknown encoding\n");
+-		  return 0;
+-		  break;
+-	    }
+-	    /* Now we may discard "soft cursor locks". */
+-	    SoftCursorUnlockScreen();
++#endif		  
++	      default:
++          fprintf(stderr, "Unknown encoding: %x\n", rectheader.encoding);
++          return 0;
++          break;
++	      }
++	      /* Now we may discard "soft cursor locks". */
++	      SoftCursorUnlockScreen();
++      }
++      if (!rfb_send_update_request(1)) return 0;
+ 
+-	 }
+-	 break;
+-      case rfbSetColourMapEntries:
+-	 fprintf(stderr, "SetColourMapEntries\n");
+-	 read_from_rfb_server(sock, ((char*)&msg.scme)+1, sz_rfbSetColourMapEntriesMsg-1);
+-	 break;
+-      case rfbBell:
+-	 fprintf(stderr, "Bell message. Unimplemented.\n");
+-	 break;
+-      case rfbServerCutText:
+-	 fprintf(stderr, "ServerCutText. Unimplemented.\n");
+-	 read_from_rfb_server(sock, ((char*)&msg.sct)+1, 
+-	       sz_rfbServerCutTextMsg-1);
+-	 size = Swap32IfLE(msg.sct.length);
+-	 buf = malloc(sizeof(char) * size);
+-	 read_from_rfb_server(sock, buf, size);
+-	 buf[size]=0;
+-	 printf("%s\n", buf);
+-	 free(buf);
+-	 break;
+-      default:
+-	 printf("Unknown server message. Type: %i\n", msg.type);
+-	 return 0;
+-	 break;
++	    break;
++
++    case rfbSetColourMapEntries:
++	    fprintf(stderr, "SetColourMapEntries\n");
++	    read_from_rfb_server(sock, ((char*)&msg.scme)+1, sz_rfbSetColourMapEntriesMsg-1);
++	     break;
++    case rfbBell:
++	    fprintf(stderr, "Bell message. Unimplemented.\n");
++	    break;
++    case rfbServerCutText:
++      fprintf(stderr, "ServerCutText. Unimplemented.\n");
++      read_from_rfb_server(sock, ((char*)&msg.sct)+1, sz_rfbServerCutTextMsg-1);
++      size = Swap32IfLE(msg.sct.length);
++      buf = malloc(sizeof(char) * size);
++      read_from_rfb_server(sock, buf, size);
++      buf[size]=0;
++      printf("%s\n", buf);
++      free(buf);
++	    break;
++    default:
++	    printf("Unknown server message. Type: %i\n", msg.type);
++	    return 0;
++	    break;
+    }
+    return(1);
+ }
+@@ -688,7 +1225,7 @@
+ static int
+ _handle_richcursor_message(rfbFramebufferUpdateRectHeader rectheader)
+ {
+-  return HandleRichCursor(rectheader.r.x, rectheader.r.y, rectheader.r.w, rectheader.r.h); 
++  return HandleCursorShape(rectheader.r.x, rectheader.r.y, rectheader.r.w, rectheader.r.h, rectheader.encoding); 
+ }
+ 
+ void
+diff -Nru directvnc-0.7.5/src/rfbproto.h directvnc-0.7.5.new/src/rfbproto.h
+--- directvnc-0.7.5/src/rfbproto.h	2002-07-07 18:50:02.000000000 +0200
++++ directvnc-0.7.5.new/src/rfbproto.h	2007-01-15 16:42:12.000000000 +0100
+@@ -1,3 +1,5 @@
++#ifndef VNC_RFBPROTO_H
++#define VNC_RFBPROTO_H
+ /*
+  *  Copyright (C) 2000, 2001 Const Kaplinsky.  All Rights Reserved.
+  *  Copyright (C) 2000 Tridia Corporation.  All Rights Reserved.
+@@ -20,7 +22,7 @@
+  */
+ 
+ /*
+- * rfbproto.h - header file for the RFB protocol version 3.3
++ * rfbproto.h - header file for the RFB protocol version 3.7
+  *
+  * Uses types CARD<n> for an n-bit unsigned integer, INT<n> for an n-bit signed
+  * integer (for n = 8, 16 and 32).
+@@ -155,7 +157,8 @@
+ 
+ #define rfbProtocolVersionFormat "RFB %03d.%03d\n"
+ #define rfbProtocolMajorVersion 3
+-#define rfbProtocolMinorVersion 3
++#define rfbProtocolMinorVersion 7
++#define rfbProtocolFallbackMinorVersion 3
+ 
+ typedef char rfbProtocolVersionMsg[13];	/* allow extra byte for null */
+ 
+@@ -163,6 +166,31 @@
+ 
+ 
+ /*-----------------------------------------------------------------------------
++ * Structure used to describe protocol options such as tunneling methods,
++ * authentication schemes and message types (protocol version 3.7t).
++ */
++
++typedef struct _rfbCapabilityInfo {
++
++    CARD32 code;		/* numeric identifier */
++    CARD8 vendorSignature[4];	/* vendor identification */
++    CARD8 nameSignature[8];	/* abbreviated option name */
++
++} rfbCapabilityInfo;
++
++#define sz_rfbCapabilityInfoVendor 4
++#define sz_rfbCapabilityInfoName 8
++#define sz_rfbCapabilityInfo 16
++
++/*
++ * Vendors known by TightVNC: standard VNC/RealVNC, TridiaVNC, and TightVNC.
++ */
++
++#define rfbStandardVendor "STDV"
++#define rfbTridiaVncVendor "TRDV"
++#define rfbTightVncVendor "TGHT"
++
++/*-----------------------------------------------------------------------------
+  * Authentication
+  *
+  * Once the protocol version has been decided, the server then sends a 32-bit
+@@ -174,6 +202,7 @@
+ #define rfbConnFailed 0
+ #define rfbNoAuth 1
+ #define rfbVncAuth 2
++#define rfbSecTypeTight 16
+ 
+ /*
+  * rfbConnFailed:	For some reason the connection failed (e.g. the server
+@@ -201,6 +230,160 @@
+ #define rfbVncAuthFailed 1
+ #define rfbVncAuthTooMany 2
+ 
++/*-----------------------------------------------------------------------------
++ * Negotiation of Tunneling Capabilities (protocol version 3.7t)
++ *
++ * If the chosen security type is rfbSecTypeTight, the server sends a list of
++ * supported tunneling methods ("tunneling" refers to any additional layer of
++ * data transformation, such as encryption or external compression.)
++ *
++ * nTunnelTypes specifies the number of following rfbCapabilityInfo structures
++ * that list all supported tunneling methods in the order of preference.
++ *
++ * NOTE: If nTunnelTypes is 0, that tells the client that no tunneling can be
++ * used, and the client should not send a response requesting a tunneling
++ * method.
++ */
++
++typedef struct _rfbTunnelingCapsMsg {
++    CARD32 nTunnelTypes;
++    /* followed by nTunnelTypes * rfbCapabilityInfo structures */
++} rfbTunnelingCapsMsg;
++
++#define sz_rfbTunnelingCapsMsg 4
++
++/*-----------------------------------------------------------------------------
++ * Tunneling Method Request (protocol version 3.7t)
++ *
++ * If the list of tunneling capabilities sent by the server was not empty, the
++ * client should reply with a 32-bit code specifying a particular tunneling
++ * method.  The following code should be used for no tunneling.
++ */
++
++#define rfbNoTunneling 0
++#define sig_rfbNoTunneling "NOTUNNEL"
++
++/*-----------------------------------------------------------------------------
++ * Negotiation of Authentication Capabilities (protocol version 3.7t)
++ *
++ * After setting up tunneling, the server sends a list of supported
++ * authentication schemes.
++ *
++ * nAuthTypes specifies the number of following rfbCapabilityInfo structures
++ * that list all supported authentication schemes in the order of preference.
++ *
++ * NOTE: If nAuthTypes is 0, that tells the client that no authentication is
++ * necessary, and the client should not send a response requesting an
++ * authentication scheme.
++ */
++
++typedef struct _rfbAuthenticationCapsMsg {
++    CARD32 nAuthTypes;
++    /* followed by nAuthTypes * rfbCapabilityInfo structures */
++} rfbAuthenticationCapsMsg;
++
++#define sz_rfbAuthenticationCapsMsg 4
++
++/*-----------------------------------------------------------------------------
++ * Authentication Scheme Request (protocol version 3.7t)
++ *
++ * If the list of authentication capabilities sent by the server was not empty,
++ * the client should reply with a 32-bit code specifying a particular
++ * authentication scheme.  The following codes are supported.
++ */
++
++#define rfbAuthNone 1
++#define rfbAuthVNC 2
++#define rfbAuthUnixLogin 129
++#define rfbAuthExternal 130
++
++#define sig_rfbAuthNone "NOAUTH__"
++#define sig_rfbAuthVNC "VNCAUTH_"
++#define sig_rfbAuthUnixLogin "ULGNAUTH"
++#define sig_rfbAuthExternal "XTRNAUTH"
++
++/* signatures for basic encoding types */
++#define sig_rfbEncodingRaw       "RAW_____"
++#define sig_rfbEncodingCopyRect  "COPYRECT"
++#define sig_rfbEncodingRRE       "RRE_____"
++#define sig_rfbEncodingCoRRE     "CORRE___"
++#define sig_rfbEncodingHextile   "HEXTILE_"
++#define sig_rfbEncodingZlib      "ZLIB____"
++#define sig_rfbEncodingTight     "TIGHT___"
++#define sig_rfbEncodingZlibHex   "ZLIBHEX_"
++
++/*
++ * Special encoding numbers:
++ *   0xFFFFFF00 .. 0xFFFFFF0F -- encoding-specific compression levels;
++ *   0xFFFFFF10 .. 0xFFFFFF1F -- mouse cursor shape data;
++ *   0xFFFFFF20 .. 0xFFFFFF2F -- various protocol extensions;
++ *   0xFFFFFF30 .. 0xFFFFFFDF -- not allocated yet;
++ *   0xFFFFFFE0 .. 0xFFFFFFEF -- quality level for JPEG compressor;
++ *   0xFFFFFFF0 .. 0xFFFFFFFF -- not allocated yet.
++ */
++
++#define rfbEncodingCompressLevel0  0xFFFFFF00
++#define rfbEncodingCompressLevel1  0xFFFFFF01
++#define rfbEncodingCompressLevel2  0xFFFFFF02
++#define rfbEncodingCompressLevel3  0xFFFFFF03
++#define rfbEncodingCompressLevel4  0xFFFFFF04
++#define rfbEncodingCompressLevel5  0xFFFFFF05
++#define rfbEncodingCompressLevel6  0xFFFFFF06
++#define rfbEncodingCompressLevel7  0xFFFFFF07
++#define rfbEncodingCompressLevel8  0xFFFFFF08
++#define rfbEncodingCompressLevel9  0xFFFFFF09
++
++#define rfbEncodingXCursor         0xFFFFFF10
++#define rfbEncodingRichCursor      0xFFFFFF11
++#define rfbEncodingPointerPos      0xFFFFFF18
++
++#define rfbEncodingLastRect        0xFFFFFF20
++#define rfbEncodingNewFBSize       0xFFFFFF21
++
++#define rfbEncodingQualityLevel0   0xFFFFFFE0
++#define rfbEncodingQualityLevel1   0xFFFFFFE1
++#define rfbEncodingQualityLevel2   0xFFFFFFE2
++#define rfbEncodingQualityLevel3   0xFFFFFFE3
++#define rfbEncodingQualityLevel4   0xFFFFFFE4
++#define rfbEncodingQualityLevel5   0xFFFFFFE5
++#define rfbEncodingQualityLevel6   0xFFFFFFE6
++#define rfbEncodingQualityLevel7   0xFFFFFFE7
++#define rfbEncodingQualityLevel8   0xFFFFFFE8
++#define rfbEncodingQualityLevel9   0xFFFFFFE9
++
++/* signatures for "fake" encoding types */
++#define sig_rfbEncodingCompressLevel0  "COMPRLVL"
++#define sig_rfbEncodingXCursor         "X11CURSR"
++#define sig_rfbEncodingRichCursor      "RCHCURSR"
++#define sig_rfbEncodingPointerPos      "POINTPOS"
++#define sig_rfbEncodingLastRect        "LASTRECT"
++#define sig_rfbEncodingNewFBSize       "NEWFBSIZ"
++#define sig_rfbEncodingQualityLevel0   "JPEGQLVL"
++
++/*-----------------------------------------------------------------------------
++ * Server Interaction Capabilities Message (protocol version 3.7t)
++ *
++ * In the protocol version 3.7t, the server informs the client what message
++ * types it supports in addition to ones defined in the protocol version 3.7.
++ * Also, the server sends the list of all supported encodings (note that it's
++ * not necessary to advertise the "raw" encoding sinse it MUST be supported in
++ * RFB 3.x protocols).
++ *
++ * This data immediately follows the server initialisation message.
++ */
++
++typedef struct _rfbInteractionCapsMsg {
++    CARD16 nServerMessageTypes;
++    CARD16 nClientMessageTypes;
++    CARD16 nEncodingTypes;
++    CARD16 pad;			/* reserved, must be 0 */
++    /* followed by nServerMessageTypes * rfbCapabilityInfo structures */
++    /* followed by nClientMessageTypes * rfbCapabilityInfo structures */
++} rfbInteractionCapsMsg;
++
++#define sz_rfbInteractionCapsMsg 8
++
++
+ 
+ /*-----------------------------------------------------------------------------
+  * Client Initialisation Message
+@@ -783,3 +966,5 @@
+     rfbPointerEventMsg pe;
+     rfbClientCutTextMsg cct;
+ } rfbClientToServerMsg;
++
++#endif /* VNC_RFBPROTO_H */
+diff -Nru directvnc-0.7.5/src/sockets.c directvnc-0.7.5.new/src/sockets.c
+--- directvnc-0.7.5/src/sockets.c	2003-01-31 08:33:02.000000000 +0100
++++ directvnc-0.7.5.new/src/sockets.c	2007-01-15 17:22:15.000000000 +0100
+@@ -273,3 +273,19 @@
+ 
+    fflush(stderr);
+ }
++
++/*
++ * Test if the other end of a socket is on the same machine.
++ */
++
++int
++SameMachine(int sock)
++{
++  struct sockaddr_in peeraddr, myaddr;
++  int addrlen = sizeof(struct sockaddr_in);
++
++  getpeername(sock, (struct sockaddr *)&peeraddr, &addrlen);
++  getsockname(sock, (struct sockaddr *)&myaddr, &addrlen);
++
++  return (peeraddr.sin_addr.s_addr == myaddr.sin_addr.s_addr);
++}
