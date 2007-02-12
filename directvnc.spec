@@ -1,5 +1,5 @@
 Summary:	DirectVNC - VNC client for DirectFB
-Summary(pl):	DirectVNC - klient VNC dla DirectFB
+Summary(pl.UTF-8):   DirectVNC - klient VNC dla DirectFB
 Name:		directvnc
 Version:	0.7.5
 Release:	5
@@ -36,19 +36,19 @@ framebuffer without the need for a running X server. This includes
 embedded devices. DirectFB even uses acceleration features of certain
 graphics cards.
 
-%description -l pl
-DirectVNC jest klientem zawieraj±cym implementacjê protoko³u zdalnego
-framebuffera (rfb - remote framebuffer protocol), u¿ywanego przez
-serwery VNC. Je¶li serwer VNC dzia³a na jakiej¶ maszynie, mo¿na siê
-z ni± po³±czyæ przy u¿yciu tego klienta i widzieæ zawarto¶æ jego
-ekranu na swoim. Zdarzenia z klawiatury i myszy s± wysy³ane do
-serwera, wiêc mo¿na zdalnie kontrolowaæ serwer VNC. Istniej± serwery
-(i inne klienty) dostêpne za darmo na wiele systemów operacyjnych.
-DirectFB od innych uniksowych klientów VNC ró¿ni siê tym, ¿e u¿ywa
-linuksowego framebuffera poprzez bibliotekê DirectFB, co pozwala na
-pracê bez potrzeby uruchamiania X serwera. Jednym z zastosowañ s±
-urz±dzenia wbudowane. DirectFB mo¿e nawet u¿ywaæ sprzêtowej
-akceleracji na niektórych kartach graficznych.
+%description -l pl.UTF-8
+DirectVNC jest klientem zawierajÄ…cym implementacjÄ™ protokoÅ‚u zdalnego
+framebuffera (rfb - remote framebuffer protocol), uÅ¼ywanego przez
+serwery VNC. JeÅ›li serwer VNC dziaÅ‚a na jakiejÅ› maszynie, moÅ¼na siÄ™
+z niÄ… poÅ‚Ä…czyÄ‡ przy uÅ¼yciu tego klienta i widzieÄ‡ zawartoÅ›Ä‡ jego
+ekranu na swoim. Zdarzenia z klawiatury i myszy sÄ… wysyÅ‚ane do
+serwera, wiÄ™c moÅ¼na zdalnie kontrolowaÄ‡ serwer VNC. IstniejÄ… serwery
+(i inne klienty) dostÄ™pne za darmo na wiele systemÃ³w operacyjnych.
+DirectFB od innych uniksowych klientÃ³w VNC rÃ³Å¼ni siÄ™ tym, Å¼e uÅ¼ywa
+linuksowego framebuffera poprzez bibliotekÄ™ DirectFB, co pozwala na
+pracÄ™ bez potrzeby uruchamiania X serwera. Jednym z zastosowaÅ„ sÄ…
+urzÄ…dzenia wbudowane. DirectFB moÅ¼e nawet uÅ¼ywaÄ‡ sprzÄ™towej
+akceleracji na niektÃ³rych kartach graficznych.
 
 %prep
 %setup -q
