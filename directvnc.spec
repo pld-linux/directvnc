@@ -1,5 +1,5 @@
 Summary:	DirectVNC - VNC client for DirectFB
-Summary(pl.UTF-8):   DirectVNC - klient VNC dla DirectFB
+Summary(pl.UTF-8):	DirectVNC - klient VNC dla DirectFB
 Name:		directvnc
 Version:	0.7.5
 Release:	5
